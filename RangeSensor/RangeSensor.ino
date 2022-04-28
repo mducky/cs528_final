@@ -23,14 +23,45 @@ VL53L0X OutSensor;
 //#define HIGH_SPEED
 //#define HIGH_ACCURACY
 
-double TrueDistance;
+double InTrueDistance;
+double OutTrueDistance;
 int NoiseThreshold = 150;
 void setup()
 {
+
   Serial.begin(9600);
+  
+  pinMode(9, OUTPUT);
+  pinMode(10, OUTPUT);
+  digitalWrite(9, LOW);
+  digitalWrite(10, LOW);
+  delay(500);
+  
   Wire.begin();
 
+  pinMode(9, INPUT);
+  delay(150);
+  Serial.println("00");
+  InSensor.init(true);
+  Serial.println("01");
+  delay(100);
+  InSensor.setAddress((uint8_t)22);
+  Serial.println("02");
+
+
+
+  pinMode(10, INPUT);
+  delay(150);
+  OutSensor.init(true);
+  Serial.println("03");
+  delay(100);
+  OutSensor.setAddress((uint8_t)25);
+  Serial.println("04");
+
+
+  
   InSensor.setTimeout(500);
+  OutSensor.setTimeout(500);
   if (!InSensor.init())
   {
     Serial.println("Failed to detect and initialize InSensor!");
@@ -43,6 +74,12 @@ void setup()
   // increase laser pulse periods (defaults are 14 and 10 PCLKs)
   InSensor.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);
   InSensor.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
+
+  // lower the return signal rate limit (default is 0.25 MCPS)
+  OutSensor.setSignalRateLimit(0.1);
+  // increase laser pulse periods (defaults are 14 and 10 PCLKs)
+  OutSensor.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);
+  OutSensor.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
 #endif
 
 #if defined HIGH_SPEED
@@ -66,78 +103,117 @@ double Train(){
   delay(5000);
   int time = millis();
   int endTime = time + 1000;
-  int reads = 0;
-  int total = 0;
+  int inReads = 0;
+  int outReads = 0;
+  double inTotal = 0;
+  double outTotal = 0; 
   while(time < endTime){
     Serial.println("Training");
-    double distance = InSensor.readRangeSingleMillimeters();
-    if(distance < 8000 && distance > 50){ //Throw away bad values
-      total = total + distance;
-      reads = reads + 1;
+    double inDistance = InSensor.readRangeSingleMillimeters();
+    double outDistance = OutSensor.readRangeSingleMillimeters();
+    if(inDistance < 8000 && inDistance > 50){ //Throw away bad values
+      inTotal = inTotal + inDistance;
+      inReads = inReads + 1;
+    }
+    if(outDistance < 8000 && outDistance > 50){ //Throw away bad values
+      outTotal = outTotal + outDistance;
+      outReads = outReads + 1;
     }
   time = millis();
   }
-  TrueDistance = total / reads;
-  Serial.println("True Distance: ");
-  Serial.print(TrueDistance);
-  return(TrueDistance);
+  InTrueDistance = inTotal / inReads;
+  OutTrueDistance = outTotal / outReads;
+  Serial.println("In True Distance: ");
+  Serial.print(InTrueDistance);
+  Serial.println("Out True Distance: ");
+  Serial.print(OutTrueDistance);
+  
 }
 
 
-int mean[] = {TrueDistance,TrueDistance,TrueDistance,TrueDistance,TrueDistance};
-int pos = 0;
-double getMean(int dist){
-  if(dist > 8000 || dist < 50){ // Throw away bad values
-    return ((mean[0] + mean[1] + mean[2] + mean[3] + mean[4]) / 5);
+double inMean[] = {InTrueDistance,InTrueDistance,InTrueDistance,InTrueDistance,InTrueDistance};
+double outMean[] ={OutTrueDistance,OutTrueDistance,OutTrueDistance,OutTrueDistance,OutTrueDistance}; 
+int inPos = 0;
+int outPos = 0;
+
+double getInMean(int dist){
+   if(dist > 8000 || dist < 50){ // Throw away bad values
+    return ((inMean[0] + inMean[1] + inMean[2] + inMean[3] + inMean[4]) / 5);
   }
-  mean[pos] = dist;
-  pos += 1;
-  pos = pos % 5;
-  return ((mean[0] + mean[1] + mean[2] + mean[3] + mean[4]) / 5);
+  inMean[inPos] = dist;
+  inPos += 1;
+  inPos = inPos % 5;
+  return ((inMean[0] + inMean[1] + inMean[2] + inMean[3] + inMean[4]) / 5);
   }
+  
+
+double getOutMean(double dist){
+   if(dist > 8000 || dist < 50){ // Throw away bad values
+    return ((outMean[0] + outMean[1] + outMean[2] + outMean[3] + outMean[4]) / 5);
+  }
+  outMean[outPos] = dist;
+  outPos += 1;
+  outPos = inPos % 5;
+  return ((outMean[0] + outMean[1] + outMean[2] + outMean[3] + outMean[4]) / 5);
+  }
+  
 
 int RoomOccupancy = 0; 
+
 void loop()
 {
   // On startup, train for the true distance
   if(Trained == false){
-    TrueDistance = Train();
+    Train();
     for(int i = 0; i < 5; i ++){ //Set the initial mean array to the true distance 
-      mean[i] = TrueDistance;}
-      
+      inMean[i] = InTrueDistance;
+      outMean[i] = OutTrueDistance;
+      }
     for (int i = 0; i < 5; i++){ //For whatever reason, the first 5 reads mess things up. Doing them before checking path crossing fixes this. 
-      double distance = InSensor.readRangeSingleMillimeters();
-      distance = getMean(distance);}
+      double inDistance = InSensor.readRangeSingleMillimeters();
+      inDistance = getInMean(inDistance);
+      double outDistance = OutSensor.readRangeSingleMillimeters();
+      outDistance = getOutMean(outDistance);
+      }
   }
   
-    double distance = InSensor.readRangeSingleMillimeters();  // Collect InSensor data
-    double meanDistance = getMean(distance);                // Get the mean
-    //Serial.print(meanDistance);
-    //Serial.print(" TRUE: ");
-    //Serial.print(TrueDistance);
+    double inDistance = InSensor.readRangeSingleMillimeters();  // Collect InSensor data
+    double meanInDistance = getInMean(inDistance);
+    double outDistance = OutSensor.readRangeSingleMillimeters();  // Collect InSensor data
+    double meanOutDistance = getOutMean(outDistance);// Get the mean
+   // Serial.print("In: ");
+   // Serial.print(meanInDistance);
+   // Serial.print(" Out: ");
+   // Serial.print(meanOutDistance);
 
   boolean entering = false;
   boolean leaving = false;
-  if((meanDistance - TrueDistance > NoiseThreshold) || (meanDistance - TrueDistance < (-1 * NoiseThreshold))){ 
+  
+  while((meanInDistance - InTrueDistance > NoiseThreshold) || (meanInDistance - InTrueDistance < (-1 * NoiseThreshold))){ 
     // If the difference between the mean and true distance is more than 150, the path has been crossed
-    Serial.print("Path Crossed");
-    // entering = (InSensorCrossed > OutSensorCrossed)
-    if(entering){
-      RoomOccupancy += 1;
+    inDistance = InSensor.readRangeSingleMillimeters();  // Collect InSensor data
+    meanInDistance = getInMean(inDistance);
+    outDistance = OutSensor.readRangeSingleMillimeters();  // Collect InSensor data
+    meanOutDistance = getOutMean(outDistance);// Get the mean
+    if((meanOutDistance - OutTrueDistance > NoiseThreshold) || (meanOutDistance - OutTrueDistance < (-1 * NoiseThreshold))){
+    Serial.println("Going Out");
+    }    
     }
-    if(leaving){
-      if(RoomOccupancy > 0)
-        RoomOccupancy -= 1;
-    }
-    if(RoomOccupancy == 0){
-      Serial.print("empty");
-    }
-    if(RoomOccupancy > 0){
-      Serial.print("Occupied");
+    
+  while((meanOutDistance - OutTrueDistance > NoiseThreshold) || (meanOutDistance - OutTrueDistance < (-1 * NoiseThreshold))){ 
+    inDistance = InSensor.readRangeSingleMillimeters();  // Collect InSensor data
+    meanInDistance = getInMean(inDistance);
+    outDistance = OutSensor.readRangeSingleMillimeters();  // Collect InSensor data
+    meanOutDistance = getOutMean(outDistance);// Get the mean
+    if((meanInDistance - InTrueDistance > NoiseThreshold) || (meanInDistance - InTrueDistance < (-1 * NoiseThreshold))){
+      Serial.println("Going in");
     }
   }
+    
+    
+
 
   
   if (InSensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
-  Serial.println();
+  //Serial.println();
 }
