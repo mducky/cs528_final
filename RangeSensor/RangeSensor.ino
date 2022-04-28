@@ -1,7 +1,9 @@
 #include <Wire.h>
 #include <VL53L0X.h>
 
-VL53L0X sensor;
+VL53L0X InSensor;
+VL53L0X OutSensor;
+
 
 
 // Uncomment this line to use long range mode. This
@@ -28,27 +30,27 @@ void setup()
   Serial.begin(9600);
   Wire.begin();
 
-  sensor.setTimeout(500);
-  if (!sensor.init())
+  InSensor.setTimeout(500);
+  if (!InSensor.init())
   {
-    Serial.println("Failed to detect and initialize sensor!");
+    Serial.println("Failed to detect and initialize InSensor!");
     while (1) {}
   }
 
 #if defined LONG_RANGE
   // lower the return signal rate limit (default is 0.25 MCPS)
-  sensor.setSignalRateLimit(0.1);
+  InSensor.setSignalRateLimit(0.1);
   // increase laser pulse periods (defaults are 14 and 10 PCLKs)
-  sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);
-  sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
+  InSensor.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);
+  InSensor.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);
 #endif
 
 #if defined HIGH_SPEED
   // reduce timing budget to 20 ms (default is about 33 ms)
-  sensor.setMeasurementTimingBudget(20000);
+  InSensor.setMeasurementTimingBudget(20000);
 #elif defined HIGH_ACCURACY
   // increase timing budget to 200 ms
-  sensor.setMeasurementTimingBudget(200000);
+  InSensor.setMeasurementTimingBudget(200000);
 #endif
 }
 
@@ -68,7 +70,7 @@ double Train(){
   int total = 0;
   while(time < endTime){
     Serial.println("Training");
-    double distance = sensor.readRangeSingleMillimeters();
+    double distance = InSensor.readRangeSingleMillimeters();
     if(distance < 8000 && distance > 50){ //Throw away bad values
       total = total + distance;
       reads = reads + 1;
@@ -94,7 +96,7 @@ double getMean(int dist){
   return ((mean[0] + mean[1] + mean[2] + mean[3] + mean[4]) / 5);
   }
 
-
+int RoomOccupancy = 0; 
 void loop()
 {
   // On startup, train for the true distance
@@ -104,24 +106,38 @@ void loop()
       mean[i] = TrueDistance;}
       
     for (int i = 0; i < 5; i++){ //For whatever reason, the first 5 reads mess things up. Doing them before checking path crossing fixes this. 
-      double distance = sensor.readRangeSingleMillimeters();
+      double distance = InSensor.readRangeSingleMillimeters();
       distance = getMean(distance);}
   }
   
-    double distance = sensor.readRangeSingleMillimeters();  // Collect sensor data
+    double distance = InSensor.readRangeSingleMillimeters();  // Collect InSensor data
     double meanDistance = getMean(distance);                // Get the mean
     //Serial.print(meanDistance);
     //Serial.print(" TRUE: ");
     //Serial.print(TrueDistance);
 
-  
+  boolean entering = false;
+  boolean leaving = false;
   if((meanDistance - TrueDistance > NoiseThreshold) || (meanDistance - TrueDistance < (-1 * NoiseThreshold))){ 
     // If the difference between the mean and true distance is more than 150, the path has been crossed
     Serial.print("Path Crossed");
-  
+    // entering = (InSensorCrossed > OutSensorCrossed)
+    if(entering){
+      RoomOccupancy += 1;
+    }
+    if(leaving){
+      if(RoomOccupancy > 0)
+        RoomOccupancy -= 1;
+    }
+    if(RoomOccupancy == 0){
+      Serial.print("empty");
+    }
+    if(RoomOccupancy > 0){
+      Serial.print("Occupied");
+    }
   }
 
   
-  if (sensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
+  if (InSensor.timeoutOccurred()) { Serial.print(" TIMEOUT"); }
   Serial.println();
 }
