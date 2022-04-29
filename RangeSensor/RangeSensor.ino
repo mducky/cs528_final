@@ -185,9 +185,6 @@ void loop()
    // Serial.print(meanInDistance);
    // Serial.print(" Out: ");
    // Serial.print(meanOutDistance);
-
-  boolean entering = false;
-  boolean leaving = false;
   
   while((meanInDistance - InTrueDistance > NoiseThreshold) || (meanInDistance - InTrueDistance < (-1 * NoiseThreshold))){ 
     // If the difference between the mean and true distance is more than 150, the path has been crossed
@@ -196,6 +193,7 @@ void loop()
     outDistance = OutSensor.readRangeSingleMillimeters();  // Collect InSensor data
     meanOutDistance = getOutMean(outDistance);// Get the mean
     if((meanOutDistance - OutTrueDistance > NoiseThreshold) || (meanOutDistance - OutTrueDistance < (-1 * NoiseThreshold))){
+      RoomOccupancy = RoomOccupancy + 1;
     Serial.println("Going Out");
     }    
     }
@@ -206,10 +204,19 @@ void loop()
     outDistance = OutSensor.readRangeSingleMillimeters();  // Collect InSensor data
     meanOutDistance = getOutMean(outDistance);// Get the mean
     if((meanInDistance - InTrueDistance > NoiseThreshold) || (meanInDistance - InTrueDistance < (-1 * NoiseThreshold))){
+      if(RoomOccupancy > 0){
+        RoomOccupancy = RoomOccupancy - 1;
+      }
       Serial.println("Going in");
     }
   }
-    
+   
+   if(RoomOccupancy == 0){
+    Serial.println("empty");
+   }
+   else{
+    Serial.println("occupied");
+   }
     
 
 
