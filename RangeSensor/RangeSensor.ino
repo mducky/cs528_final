@@ -185,7 +185,7 @@ void loop()
    // Serial.print(meanInDistance);
    // Serial.print(" Out: ");
    // Serial.print(meanOutDistance);
-  
+  boolean firstInCross = true;
   while((meanInDistance - InTrueDistance > NoiseThreshold) || (meanInDistance - InTrueDistance < (-1 * NoiseThreshold))){ 
     // If the difference between the mean and true distance is more than 150, the path has been crossed
     inDistance = InSensor.readRangeSingleMillimeters();  // Collect InSensor data
@@ -193,30 +193,38 @@ void loop()
     outDistance = OutSensor.readRangeSingleMillimeters();  // Collect InSensor data
     meanOutDistance = getOutMean(outDistance);// Get the mean
     if((meanOutDistance - OutTrueDistance > NoiseThreshold) || (meanOutDistance - OutTrueDistance < (-1 * NoiseThreshold))){
-      RoomOccupancy = RoomOccupancy + 1;
-    Serial.println("Going Out");
-    }    
+      if(firstInCross){
+        firstInCross = false;
+        if(RoomOccupancy > 0){
+        RoomOccupancy = RoomOccupancy - 1;      
+        Serial.println("Going Out");
+        Serial.println(RoomOccupancy);
+        }
+      }
+     }    
     }
-    
+  boolean firstOutCross = true;
   while((meanOutDistance - OutTrueDistance > NoiseThreshold) || (meanOutDistance - OutTrueDistance < (-1 * NoiseThreshold))){ 
     inDistance = InSensor.readRangeSingleMillimeters();  // Collect InSensor data
     meanInDistance = getInMean(inDistance);
     outDistance = OutSensor.readRangeSingleMillimeters();  // Collect InSensor data
     meanOutDistance = getOutMean(outDistance);// Get the mean
     if((meanInDistance - InTrueDistance > NoiseThreshold) || (meanInDistance - InTrueDistance < (-1 * NoiseThreshold))){
-      if(RoomOccupancy > 0){
-        RoomOccupancy = RoomOccupancy - 1;
+      if(firstOutCross){
+        firstOutCross = false;
+          RoomOccupancy = RoomOccupancy + 1;
+          Serial.println("Going in");
+          Serial.println(RoomOccupancy);
       }
-      Serial.println("Going in");
+     
     }
   }
-   
-   if(RoomOccupancy == 0){
-    Serial.println("empty");
-   }
-   else{
-    Serial.println("occupied");
-   }
+//  if(RoomOccupancy == 0){
+//    Serial.println("empty");
+//   }
+//   else{
+//    Serial.println("occupied");
+//   }
     
 
 
