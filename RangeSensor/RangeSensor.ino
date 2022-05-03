@@ -123,10 +123,10 @@ double Train(){
   }
   InTrueDistance = inTotal / inReads;
   OutTrueDistance = outTotal / outReads;
-  Serial.println("In True Distance: ");
-  Serial.print(InTrueDistance);
-  Serial.println("Out True Distance: ");
-  Serial.print(OutTrueDistance);
+ // Serial.println("In True Distance: ");
+ // Serial.print(InTrueDistance);
+ // Serial.println("Out True Distance: ");
+ // Serial.print(OutTrueDistance);
   
 }
 
@@ -197,8 +197,8 @@ void loop()
         firstInCross = false;
         if(RoomOccupancy > 0){
         RoomOccupancy = RoomOccupancy - 1;      
-        Serial.println("Going Out");
-        Serial.println(RoomOccupancy);
+       // Serial.println("Going Out");
+       // Serial.println(RoomOccupancy);
         }
       }
      }    
@@ -213,18 +213,18 @@ void loop()
       if(firstOutCross){
         firstOutCross = false;
           RoomOccupancy = RoomOccupancy + 1;
-          Serial.println("Going in");
-          Serial.println(RoomOccupancy);
+          //Serial.println("Going in");
+          //Serial.println(RoomOccupancy);
       }
      
     }
   }
-//  if(RoomOccupancy == 0){
-//    Serial.println("empty");
-//   }
-//   else{
-//    Serial.println("occupied");
-//   }
+  if(RoomOccupancy == 0){
+    Serial.println("empty");
+   }
+   else{
+    Serial.println("occupied");
+   }
     
 
 
