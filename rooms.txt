@@ -1,0 +1,6 @@
+# This is the file to store room / plug information.
+# Right now it is only setup to interact with one in / out coupling
+# but will have potential for future growth
+# example input: separted by spaaces
+living_room plug1 plug2
+
