@@ -1,14 +1,16 @@
-import serial
-from kasa import SmartDevice, SmartStrip, SmartBulb, SmartPlug, SmartLightStrip
 import asyncio
-import time
 import os
+import time
 
+import serial
+from kasa import SmartBulb, SmartDevice, SmartLightStrip, SmartPlug, SmartStrip
 
 OUT_TIME = 10
 MODE = "dev"  # TODO change to not dev
 
+
 async def turnoff(devices):
+    """turn off passed SmartDevices"""
     if MODE == "dev":
         return
     for device in devices:
@@ -19,12 +21,13 @@ async def turnoff(devices):
         elif device.is_plug or device.is_bulb or device.is_light_strip:
             await device.turn_off()
         else:
-            #raise Exception("Device unknown")
-            print("unknown device")
+            raise Exception("Device unknown")
             break
         await device.update()
 
+
 async def turnon(devices):
+    """Turn on passed SmartDevices"""
     if MODE == "dev":
         return
     for device in devices:
@@ -35,26 +38,31 @@ async def turnon(devices):
         elif device.is_plug or device.is_bulb or device.is_light_strip:
             await device.turn_on()
         else:
-             print("unknown device")
-             break
-             # raise Exception("Device unknown")
+            raise Exception("Device unknown")
+            break
         await device.update()
 
+
 def load_devices_from_file():
+    """Loads devices from devices.txt in the same folder. format is IP address per line"""
     devices = []
     with open("devices.txt", "r") as device_file:
         device_addrs = device_file.read()
         device_addr_list = device_addrs.split("\n")
         for device_addr in device_addr_list:
             if len(device_addr) > 0:
-                if (device_addr[0] not in "#"):
+                if device_addr[0] not in "#":
                     devices.append(SmartDevice(device_addr))
     return devices
 
+
 def scan_for_devices():
+    """Will scan for compatible SmartDevices on the network"""
     print("scan for devices is not implemented")
 
+
 def load_devices():
+    """Primary device loader, will first try from file then from scanning"""
     devices = []
     if "devices.txt" in os.listdir():
         devices = load_devices_from_file()
@@ -67,38 +75,36 @@ def load_devices():
                 devices.append(plug)
     return devices
 
+
 def load_arduino():
+    """Finds likely arduino port and assigns it"""
     files = os.listdir("/dev")
     for folders in files:
-        if("ttyAC" in folders[:-2]):
+        if "ttyAC" in folders[:-2]:
             arduino_port = folders
     arduino = serial.Serial(f"/dev/{arduino_port}")
     return arduino
 
-def readArduino(arduino):
-    raw = arduino.readline()
-    decode = raw.decode('utf-8')
-    strip = decode.rstrip()
-    return strip
 
 async def loop(arduino, devices):
+    """Loops through reading data and controlling devices"""
     off_state = True
     empty_timestamp = time.time()
     while True:
         try:
-            ser_bytes = arduino.readline().decode('utf-8')
+            ser_bytes = arduino.readline().decode("utf-8")
             ser_bytes = ser_bytes.rstrip()
-            if(ser_bytes == "Training"):
+            if ser_bytes == "Training":
                 print(ser_bytes)
-            if(ser_bytes == "occupied"):  # if the room is occupied,
+            if ser_bytes == "occupied":  # if the room is occupied,
                 empty_timestamp = time.time()
-                if(off_state == True):  # check if it is turned off, if so turn on.
+                if off_state is True:  # check if it is turned off, if so turn on.
                     print("turning on")
                     off_state = False
                     await turnon(devices)
             current_time = time.time()
             # if it has been OUT_TIME seconds and is in the onstate, turn off and set the state.
-            if (off_state == False and (current_time - OUT_TIME > empty_timestamp)):
+            if off_state is False and (current_time - OUT_TIME > empty_timestamp):
                 print("turning off")
                 off_state = True
                 await turnoff(devices)
@@ -112,13 +118,16 @@ async def loop(arduino, devices):
             print(e)
             break
 
-def __init__():
+
+def _init():
+    """loads devices and the arduino for easy use later"""
     dev = load_devices()
     ard = load_arduino()
     return {"arduino": ard, "devices": dev}
 
+
 if __name__ == "__main__":
-    init = __init__()
-    arduino = init["arduino"]
-    devices = init["devices"]
-    asyncio.run(loop(arduino,devices))
+    init = _init()
+    ard = init["arduino"]
+    devs = init["devices"]
+    asyncio.run(loop(ard, devs))
