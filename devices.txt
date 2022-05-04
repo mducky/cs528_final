@@ -1,0 +1,5 @@
+# kasa devices should be listed here.
+# TODO the format will be decided by the convenience of the shell commands
+# but it should look something like
+192.168.0.21
+
