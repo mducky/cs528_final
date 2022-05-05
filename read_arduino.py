@@ -1,31 +1,44 @@
 import asyncio
 import os
 import time
-
+import socket
 import serial
-from kasa import (Discover, SmartBulb, SmartDevice, SmartLightStrip, SmartPlug,
-                  SmartStrip)
+from kasa import (
+    Discover,
+    SmartBulb,
+    SmartDevice,
+    SmartLightStrip,
+    SmartPlug,
+    SmartStrip,
+)
 
 OUT_TIME = 10
 MODE = "testing"  # TODO change to not dev
-
+printmodes = ["testing", "dev"]
+DEVICE_FILE = "devices.txt"
 
 async def _turnoff(devices):
     """turn off passed SmartDevices"""
     if MODE == "dev":
         return
     for device in devices:
-        #await device.update()
         if device.is_strip:
             for plug in device.children():
                 if "light" in plug.alias:
                     await plug.turn_off()
-        elif device.is_plug or device.is_bulb or device.is_light_strip or device.is_strip_socket:
+        elif (
+            device.is_plug
+            or device.is_bulb
+            or device.is_light_strip
+            or device.is_strip_socket
+        ):
             await device.turn_off()
+            await device.update()
+            await asyncio.sleep(0.25)
         else:
             raise Exception("Device unknown")
             break
-        #await device.update()
+    await asyncio.sleep(1)
 
 
 async def _turnon(devices):
@@ -33,32 +46,55 @@ async def _turnon(devices):
     if MODE == "dev":
         return
     for device in devices:
-        #await device.update()
         if device.is_strip:
             for plug in device.children():
                 if "light" in plug.alias:
                     await plug.turn_on()
-        elif device.is_plug or device.is_bulb or device.is_light_strip or device.is_strip_socket:
+        elif (
+            device.is_plug
+            or device.is_bulb
+            or device.is_light_strip
+            or device.is_strip_socket
+        ):
             await device.turn_on()
+            await device.update()
+            await asyncio.sleep(0.25)
         else:
-            raise Exception(f'{device.device_type} Device unknown')
+            raise Exception(f"{device.device_type} Device unknown")
             break
-        #await device.update()
-
+    await asyncio.sleep(1)
 
 async def _load_devices_from_file():
     """Loads devices from devices.txt in the same folder. format is IP address per line"""
+
+    def get_ip():  # from stack overflow
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        try:
+            s.connect(("10.255.255.255", 1))
+            IP = s.getsockname()[0]
+        except Exception:
+            IP = "127.0.0.1"
+        finally:
+            s.close()
+        return IP
+
+    def compareAddr(addr, ip):  # lazy solution but likely to workout
+        if addr[:6] in ip[:6]:
+            return True
+        else:
+            return False
+
+    address = get_ip()
     devices = []
     with open("devices.txt", "r") as device_file:
-        device_addrs = device_file.read()
-        device_addr_list = device_addrs.split("\n")
-        for device_addr in device_addr_list:
+        device_addrs = device_file.read().split("\n")
+        for device_addr in device_addrs:
             if len(device_addr) > 0:
-                if device_addr[0] not in "#":
+                if device_addr[0] not in "#" and compareAddr(device_addr, address):
                     device = await Discover.discover_single(device_addr)
                     await device.update()
                     devices.append(device)
-    print(f'Loaded devices: {[dev.alias for dev in devices]}')
     return devices
 
 
@@ -72,13 +108,22 @@ async def _scan_for_devices():
     return devices
 
 
-async def _load_devices():
+async def _load_devices(loadfrom="files"):
     """Primary device loader, will first try from file then from scanning"""
     devices = []
-    if "devices.txt" in os.listdir():
+    if DEVICE_FILE in os.listdir() and loadfrom in ["files", "all"]:
+        if(MODE in printmodes):
+            print(f"searching {DEVICE_FILE} for devices")
         devices = await _load_devices_from_file()
-    if devices == []:
+    if devices == [] or loadfrom in ["all", "scan"]:
+        if(MODE in printmodes):
+            print(f"no devices found in {DEVICE_FILE} scanning for devices")
         devices = await _scan_for_devices()
+    if(MODE in printmodes):
+        if len(devices) > 0:
+            print(f"Loaded devices: {[dev.alias for dev in devices]}")
+        else:
+            print(f"Loaded no devices")
     for device in devices:
         if device.is_strip:
             for plug in device.children:
@@ -89,39 +134,40 @@ async def _load_devices():
 
 def _load_arduino():
     """Finds likely arduino port and assigns it"""
+    _wait_for_arduino()
     files = os.listdir("/dev")
     for folders in files:
         if "ttyAC" in folders[:-2]:
             arduino_port = folders
     arduino = serial.Serial(f"/dev/{arduino_port}")
+    if(MODE in printmodes or MODE == "debug"):
+        print(f"Arduino found at {arduino_port}")
+
     return arduino
-
-async def create_power_task(func):
-    return asyncio.create_task(func)
-
-
 
 async def loop(arduino, devices):
     """Loops through reading data and controlling devices"""
     off_state = True
     empty_timestamp = time.time()
-    mainloop = asyncio.get_event_loop()
-    loopcount = 0
+    arduino.flush()
     while True:
         try:
             tasks = []
             ser_bytes = arduino.readline().decode("utf-8")
             ser_bytes = ser_bytes.rstrip()
-            if ser_bytes == "Training" or loopcount == 0:
+            if((ser_bytes not in ["occupied", "empty"]) and (MODE in printmodes)):
                 print(ser_bytes)
-            if ser_bytes == "occupied":  # if the room is occupied,
+            if ser_bytes == "occupied":
                 empty_timestamp = time.time()
                 if off_state is True:  # check if it is turned off, if so turn on.
-                    print(f"turning on")
+                    if(MODE in printmodes):
+                        print(f"turning on")
                     off_state = False
                     ontask = asyncio.create_task(_turnon(devices))
                     tasks.append(ontask)
+
             current_time = time.time()
+
             # if it has been OUT_TIME seconds and is in the onstate, turn off and set the state.
             if off_state is False and (current_time - OUT_TIME > empty_timestamp):
                 print("turning off")
@@ -129,13 +175,11 @@ async def loop(arduino, devices):
                 offtask = asyncio.create_task(_turnoff(devices))
                 tasks.append(offtask)
                 empty_timestamp = time.time()
-            # time.sleep(0.5)  # sleep 1 second
+
             for task in tasks:
                 await task
-                for dev in devices:
-                    await dev.update()
+                tasks.remove(task)
             arduino.flush()
-            loopcount = (loopcount + 1) % 15
 
         except KeyboardInterrupt:
             print("\nkeyboard interrupt. Stopping")
@@ -152,9 +196,16 @@ async def _init():
     arduino = _load_arduino()
     return {"arduino": arduino, "devices": devices}
 
+def _wait_for_arduino():
+    """ Helper function that waits for a port the be similar to arduino before proceeding """
+    while "ttyAC" not in [fd[:-2] for fd in os.listdir("/dev")]:
+        print("no arduino waiting 10 seconds and trying again")
+        time.sleep(10)
+
 
 if __name__ == "__main__":
     init = asyncio.run(_init())
+    time.sleep(2)
     ard = init["arduino"]
     devs = init["devices"]
     asyncio.run(loop(ard, devs))
