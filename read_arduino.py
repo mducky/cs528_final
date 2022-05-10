@@ -12,7 +12,7 @@ from kasa import (
     SmartStrip,
 )
 
-OUT_TIME = 10
+OUT_TIME = 5
 MODE = "testing"  # TODO change to not dev
 printmodes = ["testing", "dev"]
 DEVICE_FILE = "devices.txt"
@@ -32,6 +32,7 @@ async def _turnoff(devices):
             or device.is_light_strip
             or device.is_strip_socket
         ):
+            print(device.alias)
             await device.turn_off()
             await device.update()
             await asyncio.sleep(0.25)
